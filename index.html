@@ -2,59 +2,27 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-
     <title>犬田市 地図</title>
   </head>
 
   <body>
+    <div id="map"></div>
 
-    <div id="toolbar">
-
-      <button id="city-button">
-        犬田市を描く
-      </button>
-
-      <button id="redraw-city-button">
-        犬田市を描き直す
-      </button>
-
-      <button id="company-button">
-        会社を置く
-      </button>
-
-      <button id="label-button">
-        名称を置く
-      </button>
-
-      <button id="stop-button">
-        操作を終了
-      </button>
-
-      <button id="save-button">
-        💾 保存
-      </button>
-
-      <button id="load-button">
-        ↻ 読み込み
-      </button>
-
-      <button id="clear-button">
-        🗑️ 全部消す
-      </button>
-
+    <div id="map-attribution">
+      <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>
+      <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>
+      Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
     </div>
 
-    <div id="map"></div>
+    <button id="load-button" type="button">↻ 読み込み</button>
 
     <script
       type="module"
       src="./main.js"
     ></script>
-
   </body>
 </html>

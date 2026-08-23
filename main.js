@@ -11,9 +11,7 @@ import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import Polygon from 'ol/geom/Polygon.js';
 
-import Draw from 'ol/interaction/Draw.js';
-
-import { fromLonLat } from 'ol/proj.js';
+import { apply } from 'ol-mapbox-style';
 
 import Style from 'ol/style/Style.js';
 import Text from 'ol/style/Text.js';
@@ -21,7 +19,22 @@ import CircleStyle from 'ol/style/Circle.js';
 import Fill from 'ol/style/Fill.js';
 import Stroke from 'ol/style/Stroke.js';
 
-import { apply } from 'ol-mapbox-style';
+import { fromLonLat } from 'ol/proj.js';
+
+
+// ==================================================
+// 初期表示設定
+// ==================================================
+
+// 会社の座標
+// すでにEPSG:3857なので fromLonLat() は使用しない
+const INITIAL_CENTER = [
+  15514708.703540094,
+  4340449.639284931
+];
+
+// 初期ズーム倍率
+const INITIAL_ZOOM = 18;
 
 
 // ==================================================
@@ -32,14 +45,14 @@ const map = new Map({
 
   target: 'map',
 
+  // OpenLayers標準の左上UIを非表示
+  controls: [],
+
   view: new View({
 
-    center: fromLonLat([
-      139.38,
-      36.29
-    ]),
+    center: INITIAL_CENTER,
 
-    zoom: 12
+    zoom: INITIAL_ZOOM
 
   })
 
@@ -47,7 +60,7 @@ const map = new Map({
 
 
 // ==================================================
-// 犬田市用データ
+// 地図データ用ソース
 // ==================================================
 
 const source = new VectorSource();
@@ -96,7 +109,7 @@ const vectorLayer = new VectorLayer({
 
         text: new Text({
 
-          text: feature.get('name'),
+          text: feature.get('name') || '',
 
           font: 'bold 15px sans-serif',
 
@@ -133,7 +146,7 @@ const vectorLayer = new VectorLayer({
 
         text: new Text({
 
-          text: feature.get('name'),
+          text: feature.get('name') || '',
 
           font: 'bold 18px sans-serif',
 
@@ -193,7 +206,100 @@ const vectorLayer = new VectorLayer({
 
 
 // ==================================================
-// OpenFreeMapを読み込む
+// 犬田市ラベル
+// ==================================================
+
+const labelSource =
+  new VectorSource();
+
+
+const labelLayer =
+  new VectorLayer({
+
+    source: labelSource,
+
+    style: new Style({
+
+      text: new Text({
+
+        text: '犬田市',
+
+        font: 'bold 32px sans-serif',
+
+        fill: new Fill({
+
+          color: '#ff0000'
+
+        }),
+
+        stroke: new Stroke({
+
+          color: '#ffffff',
+
+          width: 8
+
+        })
+
+      })
+
+    })
+
+  });
+
+
+const cityLabel =
+  new Feature({
+
+    geometry:
+      new Point(
+
+        fromLonLat([
+
+          139.38,
+          36.29
+
+        ])
+
+      )
+
+  });
+
+
+labelSource.addFeature(
+  cityLabel
+);
+
+
+// ==================================================
+// レイヤー追加
+// ==================================================
+
+let overlayLayersAdded = false;
+
+
+function addOverlayLayers() {
+
+  if (overlayLayersAdded) {
+
+    return;
+
+  }
+
+  overlayLayersAdded = true;
+
+  map.addLayer(
+    vectorLayer
+  );
+
+  map.addLayer(
+    labelLayer
+  );
+
+}
+
+
+// ==================================================
+// 背景地図
 // ==================================================
 
 apply(
@@ -202,112 +308,273 @@ apply(
 
   './map-style/liberty-no-labels.json'
 
-).then(function () {
-
+)
+.then(function () {
 
   console.log(
     'OpenFreeMap loaded'
   );
 
+})
+.catch(function (error) {
 
-  // ==================================================
-  // OpenFreeMapの後に犬田市レイヤーを追加
-  // ==================================================
-
-  map.addLayer(
-    vectorLayer
+  console.error(
+    'OpenFreeMapの読み込みに失敗しました:',
+    error
   );
 
+})
+.finally(function () {
 
-  // ==================================================
-  // 犬田市ラベル専用レイヤー
-  // ==================================================
+  addOverlayLayers();
 
-  const labelSource =
-    new VectorSource();
-
-
-  const labelLayer =
-    new VectorLayer({
-
-      source: labelSource,
-
-      style: new Style({
-
-        text: new Text({
-
-          text: '犬田市',
-
-          font: 'bold 32px sans-serif',
-
-          fill: new Fill({
-
-            color: '#ff0000'
-
-          }),
-
-          stroke: new Stroke({
-
-            color: '#ffffff',
-
-            width: 8
-
-          })
-
-        })
-
-      })
-
-    });
-
-
-  map.addLayer(
-    labelLayer
-  );
-
-
-  const cityLabel =
-    new Feature({
-
-      geometry:
-        new Point(
-
-          fromLonLat([
-
-            139.38,
-            36.29
-
-          ])
-
-        )
-
-    });
-
-
-  labelSource.addFeature(
-    cityLabel
-  );
-
+  // F5時に保存済み地図を自動復元
+  restoreSavedMapOnStartup();
 
 });
 
 
 // ==================================================
-// 描画
+// 地図データ読み込み
 // ==================================================
 
-let draw = null;
+function loadMapData(showAlert = false) {
 
-
-function stopDrawing() {
-
-  if (draw !== null) {
-
-    map.removeInteraction(
-      draw
+  const saved =
+    localStorage.getItem(
+      'inuta-map-data'
     );
 
-    draw = null;
+
+  // 保存データがない場合
+  if (!saved) {
+
+    if (showAlert) {
+
+      alert(
+        '保存された地図がありません。'
+      );
+
+    }
+
+    return false;
+
+  }
+
+
+  try {
+
+    const data =
+      JSON.parse(saved);
+
+
+    if (!Array.isArray(data)) {
+
+      throw new Error(
+        '保存データの形式が正しくありません。'
+      );
+
+    }
+
+
+    console.log(
+      '保存データ:',
+      data
+    );
+
+
+    // 現在の地図データを削除
+    source.clear();
+
+
+    // ------------------------------
+    // データを復元
+    // ------------------------------
+
+    data.forEach(
+      function (item) {
+
+        let geometry = null;
+
+
+        // ------------------------------
+        // Point
+        // ------------------------------
+
+        if (
+
+          item.geometryType === 'Point' &&
+
+          Array.isArray(
+            item.geometry
+          )
+
+        ) {
+
+          geometry =
+            new Point(
+              item.geometry
+            );
+
+        }
+
+
+        // ------------------------------
+        // Polygon
+        // ------------------------------
+
+        if (
+
+          item.geometryType === 'Polygon' &&
+
+          Array.isArray(
+            item.geometry
+          )
+
+        ) {
+
+          geometry =
+            new Polygon(
+              item.geometry
+            );
+
+        }
+
+
+        // ------------------------------
+        // 不正なデータ
+        // ------------------------------
+
+        if (!geometry) {
+
+          console.warn(
+            '読み込めないデータ:',
+            item
+          );
+
+          return;
+
+        }
+
+
+        const feature =
+          new Feature({
+
+            geometry:
+              geometry
+
+          });
+
+
+        feature.set(
+          'type',
+          item.type || ''
+        );
+
+
+        feature.set(
+          'name',
+          item.name || ''
+        );
+
+
+        source.addFeature(
+          feature
+        );
+
+      }
+    );
+
+
+    console.log(
+      '復元したFeature数:',
+      source.getFeatures().length
+    );
+
+
+    // ------------------------------
+    // 会社が存在する場合
+    // ------------------------------
+
+    const company =
+      data.find(
+        function (item) {
+
+          return item.type === 'company';
+
+        }
+      );
+
+
+    if (
+
+      company &&
+
+      Array.isArray(
+        company.geometry
+      )
+
+    ) {
+
+      // 保存されている会社の位置へ移動
+      map.getView().setCenter(
+        company.geometry
+      );
+
+      // 初期ズーム倍率を使用
+      map.getView().setZoom(
+        INITIAL_ZOOM
+      );
+
+    }
+
+
+    // ------------------------------
+    // 再描画
+    // ------------------------------
+
+    map.updateSize();
+
+    vectorLayer.changed();
+
+    labelLayer.changed();
+
+
+    // ------------------------------
+    // ボタンからの読み込みのみ通知
+    // ------------------------------
+
+    if (showAlert) {
+
+      alert(
+        '地図を読み込みました！'
+      );
+
+    }
+
+
+    return true;
+
+  }
+
+  catch (error) {
+
+    console.error(
+      '地図の読み込みエラー:',
+      error
+    );
+
+
+    if (showAlert) {
+
+      alert(
+        '地図データの読み込みに失敗しました。'
+      );
+
+    }
+
+
+    return false;
 
   }
 
@@ -315,219 +582,61 @@ function stopDrawing() {
 
 
 // ==================================================
-// 犬田市の範囲
+// F5 / ページ読み込み時の自動復元
 // ==================================================
 
-document
-  .getElementById('city-button')
-  .addEventListener(
-    'click',
+function restoreSavedMapOnStartup() {
+
+  const saved =
+    localStorage.getItem(
+      'inuta-map-data'
+    );
+
+
+  // 保存データがない場合は何もしない
+  if (!saved) {
+
+    return;
+
+  }
+
+
+  requestAnimationFrame(
     function () {
 
-
-      stopDrawing();
-
-
-      draw = new Draw({
-
-        source: source,
-
-        type: 'Polygon'
-
-      });
-
-
-      map.addInteraction(
-        draw
-      );
-
-
-      draw.on(
-        'drawend',
-        function (event) {
-
-
-          event.feature.set(
-            'type',
-            'city'
-          );
-
-
-          event.feature.set(
-            'name',
-            '犬田市'
-          );
-
-
-          stopDrawing();
-
-        }
-      );
+      loadMapData(false);
 
     }
   );
 
+}
+
 
 // ==================================================
-// 会社
+// 読み込みボタン
 // ==================================================
 
-document
-  .getElementById('company-button')
-  .addEventListener(
-    'click',
-    function () {
-
-
-      stopDrawing();
-
-
-      draw = new Draw({
-
-        source: source,
-
-        type: 'Point'
-
-      });
-
-
-      map.addInteraction(
-        draw
-      );
-
-
-      draw.on(
-        'drawend',
-        function (event) {
-
-
-          const name =
-            prompt(
-              '会社名を入力してください'
-            );
-
-
-          if (!name) {
-
-            source.removeFeature(
-              event.feature
-            );
-
-            stopDrawing();
-
-            return;
-
-          }
-
-
-          event.feature.set(
-            'type',
-            'company'
-          );
-
-
-          event.feature.set(
-            'name',
-            name
-          );
-
-
-          stopDrawing();
-
-        }
-      );
-
-    }
+const loadButton =
+  document.getElementById(
+    'load-button'
   );
 
 
-// ==================================================
-// 名称
-// ==================================================
+if (loadButton) {
 
-document
-  .getElementById('label-button')
-  .addEventListener(
+  loadButton.addEventListener(
+
     'click',
+
     function () {
 
-
-      stopDrawing();
-
-
-      draw = new Draw({
-
-        source: source,
-
-        type: 'Point'
-
-      });
-
-
-      map.addInteraction(
-        draw
-      );
-
-
-      draw.on(
-        'drawend',
-        function (event) {
-
-
-          const name =
-            prompt(
-              '表示する名称を入力してください'
-            );
-
-
-          if (!name) {
-
-            source.removeFeature(
-              event.feature
-            );
-
-            stopDrawing();
-
-            return;
-
-          }
-
-
-          event.feature.set(
-            'type',
-            'label'
-          );
-
-
-          event.feature.set(
-            'name',
-            name
-          );
-
-
-          stopDrawing();
-
-        }
-      );
+      loadMapData(true);
 
     }
+
   );
 
-
-// ==================================================
-// 操作終了
-// ==================================================
-
-document
-  .getElementById('stop-button')
-  .addEventListener(
-    'click',
-    function () {
-
-      stopDrawing();
-
-    }
-  );
+}
 
 
 // ==================================================
@@ -535,9 +644,10 @@ document
 // ==================================================
 
 map.on(
-  'click',
-  function (event) {
 
+  'click',
+
+  function (event) {
 
     map.forEachFeatureAtPixel(
 
@@ -545,12 +655,12 @@ map.on(
 
       function (feature) {
 
-
         if (
+
           feature.get('type') ===
           'company'
-        ) {
 
+        ) {
 
           alert(
 
@@ -566,214 +676,5 @@ map.on(
     );
 
   }
+
 );
-
-
-// ==================================================
-// 保存
-// ==================================================
-
-document
-  .getElementById('save-button')
-  .addEventListener(
-    'click',
-    function () {
-
-
-      const data =
-        source
-          .getFeatures()
-          .map(
-            function (feature) {
-
-
-              const geometry =
-                feature.getGeometry();
-
-
-              return {
-
-                type:
-                  feature.get('type'),
-
-                name:
-                  feature.get('name'),
-
-                geometryType:
-                  geometry.getType(),
-
-                geometry:
-                  geometry.getCoordinates()
-
-              };
-
-            }
-          );
-
-
-      localStorage.setItem(
-
-        'inuta-map-data',
-
-        JSON.stringify(data)
-
-      );
-
-
-      alert(
-        '地図を保存しました！'
-      );
-
-    }
-  );
-
-
-// ==================================================
-// 読み込み
-// ==================================================
-
-document
-  .getElementById('load-button')
-  .addEventListener(
-    'click',
-    function () {
-
-
-      const saved =
-        localStorage.getItem(
-          'inuta-map-data'
-        );
-
-
-      if (!saved) {
-
-        alert(
-          '保存された地図がありません。'
-        );
-
-        return;
-
-      }
-
-
-      source.clear();
-
-
-      const data =
-        JSON.parse(saved);
-
-
-      data.forEach(
-        function (item) {
-
-
-          let geometry;
-
-
-          if (
-            item.geometryType ===
-            'Point'
-          ) {
-
-
-            geometry =
-              new Point(
-                item.geometry
-              );
-
-
-          } else if (
-            item.geometryType ===
-            'Polygon'
-          ) {
-
-
-            geometry =
-              new Polygon(
-                item.geometry
-              );
-
-          }
-
-
-          if (!geometry) {
-
-            return;
-
-          }
-
-
-          const feature =
-            new Feature({
-
-              geometry:
-                geometry
-
-            });
-
-
-          feature.set(
-            'type',
-            item.type
-          );
-
-
-          feature.set(
-            'name',
-            item.name
-          );
-
-
-          source.addFeature(
-            feature
-          );
-
-        }
-      );
-
-
-      alert(
-        '地図を読み込みました！'
-      );
-
-    }
-  );
-  // ==================================================
-// 全部消す
-// ==================================================
-
-document
-  .getElementById('clear-button')
-  .addEventListener(
-    'click',
-    function () {
-
-      const confirmed =
-        confirm(
-          '犬田市の範囲、会社、名称などを全部削除しますか？\n\nこの操作は元に戻せません。'
-        );
-
-
-      if (!confirmed) {
-
-        return;
-
-      }
-
-
-      // 地図上の作成データを削除
-      source.clear();
-
-
-      // 保存データを削除
-      localStorage.removeItem(
-        'inuta-map-data'
-      );
-
-
-      alert(
-        '地図データを全部削除しました。'
-      );
-
-    }
-  );
