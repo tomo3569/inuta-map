@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "ol": "latest",
-    "ol-mapbox-style": "^13.4.2"
+    "ol-mapbox-style": "^13.5.1"
   }
 }
